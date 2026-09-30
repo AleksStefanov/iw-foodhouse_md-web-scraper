@@ -1,6 +1,6 @@
 namespace iw_foodhouse_md_web_scraper.Models;
 
-public record class MenuItemDTO(
+public record class MenuItemDto(
     string Id,
     string RestaurantId,
     string Name,

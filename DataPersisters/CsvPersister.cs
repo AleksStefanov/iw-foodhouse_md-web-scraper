@@ -27,9 +27,10 @@ public class CsvPersister : IDataPersister
 
         await foreach (var item in reader.ReadAllAsync(cancellationToken))
         {
-            var values = properties.Select(_ => 
+            var values = properties.Select(p => 
             {
-                return EscapeCsvField(item?.ToString() ?? string.Empty);
+                var propertyValue = p.GetValue(item, null);
+                return EscapeCsvField(propertyValue?.ToString() ?? string.Empty);
             });
             
             await writer.WriteLineAsync(string.Join(",", values));

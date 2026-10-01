@@ -27,7 +27,7 @@ var host = Host.CreateDefaultBuilder(args)
     logging.ClearProviders();
     logging.AddSimpleConsole(static options =>
     {
-        options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss";
+        options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss ";
         options.SingleLine = true;
     });
     logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);

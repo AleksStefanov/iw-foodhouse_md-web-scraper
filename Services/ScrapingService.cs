@@ -1,6 +1,8 @@
-using System.Collections.Concurrent;
+using System.Threading.Channels;
 using iw_foodhouse_md_web_scraper.Clients;
+using iw_foodhouse_md_web_scraper.Common;
 using iw_foodhouse_md_web_scraper.DataCollectors.Contracts;
+using iw_foodhouse_md_web_scraper.DataPersisters.Contracts;
 using iw_foodhouse_md_web_scraper.Models;
 using iw_foodhouse_md_web_scraper.Services.Contracts;
 using Microsoft.Extensions.Logging;
@@ -12,6 +14,7 @@ public class ScrapingService : IScrapingService
     private readonly IWebClient client;
     private readonly IDrupalSettingsCollector drupalCollector;
     private readonly IDomParser parser;
+    private readonly IDataPersister persister;
     private readonly ILogger<IScrapingService> logger;
     private readonly int parallelMax = 6;
     
@@ -19,11 +22,13 @@ public class ScrapingService : IScrapingService
         IWebClient client,
         IDrupalSettingsCollector drupalCollector,
         IDomParser parser,
+        IDataPersister persister,
         ILogger<IScrapingService> logger)
     {
         this.client = client;
         this.drupalCollector = drupalCollector;
         this.parser = parser;
+        this.persister = persister;
         this.logger = logger;
     }
 
@@ -37,9 +42,12 @@ public class ScrapingService : IScrapingService
         
         logger.LogInformation($"Fetching addresses and menu items..");
 
-        var fullRestaurants = new ConcurrentBag<RestaurantDto>();
-        var allMenuItems = new ConcurrentBag<MenuItemDto>();
+        var restaurantChannel = Channel.CreateUnbounded<RestaurantDto>(new UnboundedChannelOptions { SingleWriter = false, SingleReader = true });
+        var menuChannel = Channel.CreateUnbounded<MenuItemDto>(new UnboundedChannelOptions { SingleWriter = false, SingleReader = true });
 
+        var restaurantWriterTask = persister.PersistAsync(Output.RestaurantsFile, restaurantChannel.Reader, cancellationToken);
+        var menuWriterTask = persister.PersistAsync(Output.MenuItemsFile, menuChannel.Reader, cancellationToken);
+        
         var parallelOptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = parallelMax,
@@ -61,8 +69,13 @@ public class ScrapingService : IScrapingService
                 logger.LogInformation($"Collecting '{restaurant.Name}' menu items..");
                 var items = drupalCollector.ExtractMenuItems(detailHtml);
 
-                fullRestaurants.Add(new RestaurantDto(restaurant.Id, restaurant.Name, addresses));
-                Parallel.ForEach(items, item => allMenuItems.Add(item));
+                var restaurantDto = new RestaurantDto(restaurant.Id, restaurant.Name, string.Join("; ", addresses));
+
+                await restaurantChannel.Writer.WriteAsync(restaurantDto, ct);
+                foreach (var item in items)
+                {
+                    await menuChannel.Writer.WriteAsync(item, ct);
+                }
 
                 logger.LogInformation($"'{restaurant.Name}' data collected!");
             }
@@ -73,10 +86,12 @@ public class ScrapingService : IScrapingService
         });
 
         logger.LogInformation($"Exporting restaurants to csv..");
-        //await _exporter.ExportAsync(fullRestaurants, Constants.Output.RestaurantsCsv);
+        restaurantChannel.Writer.Complete();
+        logger.LogInformation($"Exporting menu items to csv..");
+        menuChannel.Writer.Complete();
 
-        logger.LogInformation($"SExporting menu items to csv..");
-        //await _exporter.ExportAsync(allMenuItems, Constants.Output.MenuItemsCsv);
+        await Task.WhenAll(restaurantWriterTask, menuWriterTask);
+
 
         logger.LogInformation("Data collection Successful");
     }

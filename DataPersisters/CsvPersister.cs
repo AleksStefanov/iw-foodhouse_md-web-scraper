@@ -6,11 +6,11 @@ namespace iw_foodhouse_md_web_scraper.DataPersisters;
 
 public class CsvPersister : IDataPersister
 {
-    public async Task PersistAsync<T>(string fileName, ChannelReader<T> reader, CancellationToken cancellationToken)
+    public async Task PersistAsync<T>(string destination, ChannelReader<T> reader, CancellationToken cancellationToken)
     where T : IPersistable
     {
        using var fileStream = new FileStream(
-            fileName,
+            destination,
             FileMode.Create,
             FileAccess.Write,
             FileShare.None,
@@ -23,17 +23,15 @@ public class CsvPersister : IDataPersister
         if (properties.Length == 0) return;
 
         var headers = properties.Select(p => p.Name);
-
         await writer.WriteLineAsync(string.Join(",", headers));
 
         await foreach (var item in reader.ReadAllAsync(cancellationToken))
         {
-            var values = properties.Select(p => 
+            var values = properties.Select(_ => 
             {
-                var rawValue = p.GetValue(item, null);
-                return EscapeCsvField(rawValue?.ToString() ?? string.Empty);
+                return EscapeCsvField(item?.ToString() ?? string.Empty);
             });
-
+            
             await writer.WriteLineAsync(string.Join(",", values));
         }
     }

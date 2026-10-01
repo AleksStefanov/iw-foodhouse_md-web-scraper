@@ -34,20 +34,43 @@ public class ScrapingService : IScrapingService
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Fetching restaurants page..");
-        var html = await client.GetAllRestourantsHtmlPageAsync(cancellationToken);
+        try
+        {
+            logger.LogInformation("Fetching restaurants page..");
+            var html = await client.GetAllRestourantsHtmlPageAsync(cancellationToken);
 
-        logger.LogInformation("Fetching restaurant ids & names..");
-        var restaurants = drupalCollector.ExtractRestaurants(html);
-        
-        logger.LogInformation($"Fetching addresses and menu items..");
+            logger.LogInformation("Fetching restaurant ids & names..");
+            var restaurants = drupalCollector.ExtractRestaurants(html);
+            
+            var restaurantChannel = Channel.CreateUnbounded<RestaurantDto>(new UnboundedChannelOptions { SingleWriter = false, SingleReader = true });
+            var menuChannel = Channel.CreateUnbounded<MenuItemDto>(new UnboundedChannelOptions { SingleWriter = false, SingleReader = true });
 
-        var restaurantChannel = Channel.CreateUnbounded<RestaurantDto>(new UnboundedChannelOptions { SingleWriter = false, SingleReader = true });
-        var menuChannel = Channel.CreateUnbounded<MenuItemDto>(new UnboundedChannelOptions { SingleWriter = false, SingleReader = true });
+            var persistenceTasks = new[]
+            {
+                persister.PersistAsync(Output.RestaurantsFile, restaurantChannel.Reader, cancellationToken),
+                persister.PersistAsync(Output.MenuItemsFile, menuChannel.Reader, cancellationToken)
+            };
 
-        var restaurantWriterTask = persister.PersistAsync(Output.RestaurantsFile, restaurantChannel.Reader, cancellationToken);
-        var menuWriterTask = persister.PersistAsync(Output.MenuItemsFile, menuChannel.Reader, cancellationToken);
-        
+            await ProcessRestaurantsParallelAsync(restaurants, restaurantChannel.Writer, menuChannel.Writer, cancellationToken);
+            
+            restaurantChannel.Writer.Complete();
+            menuChannel.Writer.Complete();
+
+            await Task.WhenAll(persistenceTasks);
+            logger.LogInformation("**** Successful Data collection ****");
+        }
+        catch(Exception ex)
+        {
+            logger.LogError(ex, $"'Restourants collection failed ..");
+        }
+    }
+
+    private async Task ProcessRestaurantsParallelAsync(
+        IEnumerable<RestaurantDto> restaurants,
+        ChannelWriter<RestaurantDto> rChannelWriter,
+        ChannelWriter<MenuItemDto> miChannelWriter,
+        CancellationToken cancellationToken)
+    {
         var parallelOptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = parallelMax,
@@ -71,10 +94,13 @@ public class ScrapingService : IScrapingService
 
                 var restaurantDto = new RestaurantDto(restaurant.Id, restaurant.Name, string.Join("; ", addresses));
 
-                await restaurantChannel.Writer.WriteAsync(restaurantDto, ct);
+                logger.LogInformation($"Exporting restaurants to csv..");
+                await rChannelWriter.WriteAsync(restaurantDto, ct);
+                
+                logger.LogInformation($"Exporting menu items to csv..");
                 foreach (var item in items)
                 {
-                    await menuChannel.Writer.WriteAsync(item, ct);
+                    await miChannelWriter.WriteAsync(item, ct);
                 }
 
                 logger.LogInformation($"'{restaurant.Name}' data collected!");
@@ -84,16 +110,6 @@ public class ScrapingService : IScrapingService
                 logger.LogError(ex, $"'{restaurant.Name}' detailed data collection failed ..");
             }
         });
-
-        logger.LogInformation($"Exporting restaurants to csv..");
-        restaurantChannel.Writer.Complete();
-        logger.LogInformation($"Exporting menu items to csv..");
-        menuChannel.Writer.Complete();
-
-        await Task.WhenAll(restaurantWriterTask, menuWriterTask);
-
-
-        logger.LogInformation("Data collection Successful");
     }
 
     private async void SimulateDelay(CancellationToken ct)

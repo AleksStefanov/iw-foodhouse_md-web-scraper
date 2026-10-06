@@ -32,12 +32,12 @@ public class ScrapingService : IScrapingService
         this.logger = logger;
     }
 
-    public async Task RunAsync(CancellationToken cancellationToken)
+    public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             logger.LogInformation("Fetching restaurants page..");
-            var html = await client.GetAllRestourantsHtmlPageAsync(cancellationToken);
+            var html = await client.GetAllRestaurantsHtmlPageAsync(cancellationToken);
 
             logger.LogInformation("Fetching restaurant ids & names..");
             var restaurants = drupalCollector.ExtractRestaurants(html);
@@ -61,7 +61,7 @@ public class ScrapingService : IScrapingService
         }
         catch(Exception ex)
         {
-            logger.LogError(ex, $"'Restourants collection failed ..");
+            logger.LogError(ex, $"'Restaurants collection failed ..");
         }
     }
 
@@ -81,7 +81,7 @@ public class ScrapingService : IScrapingService
         {
             try
             {
-                SimulateDelay(ct);
+                await SimulateDelay(ct);
 
                 logger.LogInformation($"Fetching '{restaurant.Name}' details page..");
                 var detailHtml = await client.GetRestourantDetailHtmlPageAsync(restaurant.Id, ct);
@@ -112,7 +112,7 @@ public class ScrapingService : IScrapingService
         });
     }
 
-    private async void SimulateDelay(CancellationToken ct)
+    private async Task SimulateDelay(CancellationToken ct)
     {
         var delayMs = Random.Shared.Next(300, 1200);
         await Task.Delay(delayMs, ct);

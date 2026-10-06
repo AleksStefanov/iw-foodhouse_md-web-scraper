@@ -32,7 +32,7 @@ public class ScrapingService : IScrapingService
         this.logger = logger;
     }
 
-    public async Task RunAsync(CancellationToken cancellationToken)
+    public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -81,7 +81,7 @@ public class ScrapingService : IScrapingService
         {
             try
             {
-                SimulateDelay(ct);
+                await SimulateDelay(ct);
 
                 logger.LogInformation($"Fetching '{restaurant.Name}' details page..");
                 var detailHtml = await client.GetRestourantDetailHtmlPageAsync(restaurant.Id, ct);
@@ -112,7 +112,7 @@ public class ScrapingService : IScrapingService
         });
     }
 
-    private async void SimulateDelay(CancellationToken ct)
+    private async Task SimulateDelay(CancellationToken ct)
     {
         var delayMs = Random.Shared.Next(300, 1200);
         await Task.Delay(delayMs, ct);

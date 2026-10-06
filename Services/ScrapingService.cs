@@ -37,7 +37,7 @@ public class ScrapingService : IScrapingService
         try
         {
             logger.LogInformation("Fetching restaurants page..");
-            var html = await client.GetAllRestourantsHtmlPageAsync(cancellationToken);
+            var html = await client.GetAllRestaurantsHtmlPageAsync(cancellationToken);
 
             logger.LogInformation("Fetching restaurant ids & names..");
             var restaurants = drupalCollector.ExtractRestaurants(html);
@@ -61,7 +61,7 @@ public class ScrapingService : IScrapingService
         }
         catch(Exception ex)
         {
-            logger.LogError(ex, $"'Restourants collection failed ..");
+            logger.LogError(ex, $"'Restaurants collection failed ..");
         }
     }
 

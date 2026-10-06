@@ -10,7 +10,7 @@ public class FoodHouseClient : IWebClient
     {
         this.client = client;
     }
-    public Task<string> GetAllRestourantsHtmlPageAsync(CancellationToken cancellationToken = default)
+    public Task<string> GetAllRestaurantsHtmlPageAsync(CancellationToken cancellationToken = default)
     {
         return client.GetStringAsync(Endpoints.RestaurantsUrl, cancellationToken);
     }
